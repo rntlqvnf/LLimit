@@ -6,6 +6,11 @@ struct MenuContentView: View {
     @EnvironmentObject var refresher: RefreshCoordinator
     @Environment(\.openSettings) private var openSettings
 
+    /// Single column up to 3 accounts; switch to a 2-column grid at 4+ so
+    /// the popover stays reasonably tall.
+    private var useGrid: Bool { store.accounts.count >= 4 }
+    private var popoverWidth: CGFloat { useGrid ? 660 : 360 }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
@@ -17,20 +22,39 @@ struct MenuContentView: View {
                     .font(.callout)
                     .padding(14)
             } else {
-                VStack(spacing: 10) {
-                    ForEach(store.accounts) { account in
-                        AccountCard(account: account,
-                                    state: refresher.states[account.id] ?? .idle)
-                    }
+                ScrollView {
+                    accountsLayout
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .frame(maxHeight: 520)
             }
 
             Divider().padding(.horizontal, 14)
             footer
         }
-        .frame(width: 360)
+        .frame(width: popoverWidth)
+    }
+
+    @ViewBuilder
+    private var accountsLayout: some View {
+        if useGrid {
+            let cols = [GridItem(.flexible(), spacing: 10),
+                        GridItem(.flexible(), spacing: 10)]
+            LazyVGrid(columns: cols, spacing: 10) {
+                ForEach(store.accounts) { account in
+                    AccountCard(account: account,
+                                state: refresher.states[account.id] ?? .idle)
+                }
+            }
+        } else {
+            VStack(spacing: 10) {
+                ForEach(store.accounts) { account in
+                    AccountCard(account: account,
+                                state: refresher.states[account.id] ?? .idle)
+                }
+            }
+        }
     }
 
     private var header: some View {
@@ -89,8 +113,17 @@ private struct AccountCard: View {
                         RoundedRectangle(cornerRadius: 5)
                             .fill(accent.opacity(0.15))
                     )
-                Text(account.name)
-                    .font(.subheadline.weight(.semibold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(account.name)
+                        .font(.subheadline.weight(.semibold))
+                    if let identity = identityLine {
+                        Text(identity)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
                 Spacer()
                 Text(account.provider.displayName.uppercased())
                     .font(.caption2.weight(.semibold))
@@ -113,6 +146,14 @@ private struct AccountCard: View {
 
     private var accent: Color {
         account.provider == .claude ? .orange : .cyan
+    }
+
+    private var identityLine: String? {
+        guard case .loaded(let snap) = state else { return nil }
+        var parts: [String] = []
+        if let e = snap.email { parts.append(e) }
+        if let p = snap.planLabel { parts.append(p) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     @ViewBuilder

@@ -33,6 +33,8 @@ struct AnthropicUsageAPI: UsageAPI {
             let loggedIn: Bool
             let email: String?
             let subscriptionType: String?
+            let orgName: String?
+            let authMethod: String?
         }
         guard let data = raw.data(using: .utf8),
               let status = try? JSONDecoder().decode(Status.self, from: data) else {
@@ -96,7 +98,10 @@ struct AnthropicUsageAPI: UsageAPI {
         return UsageSnapshot(
             fetchedAt: Date(),
             windows: windows,
-            note: bits.joined(separator: " · ")
+            note: status.authMethod,
+            email: status.email,
+            planLabel: status.subscriptionType.map { "\($0) plan" },
+            organization: status.orgName
         )
     }
 
@@ -188,16 +193,57 @@ struct OpenAIUsageAPI: UsageAPI {
             ))
         }
 
-        var noteParts = [line]
+        let identity = Self.readIdentity(configDir: account.configDir)
+
+        var noteParts: [String] = []
+        if let mode = identity?.authMode { noteParts.append(mode) }
         if let total = snap?.totalTokens {
-            noteParts.append("\(formatTokens(total)) tokens this session")
+            noteParts.append("\(formatTokens(total)) session tok")
         }
 
         return UsageSnapshot(
             fetchedAt: Date(),
             windows: windows,
-            note: noteParts.joined(separator: " · ")
+            note: noteParts.isEmpty ? line : noteParts.joined(separator: " · "),
+            email: identity?.email,
+            planLabel: identity?.plan.map { "\($0) plan" },
+            organization: nil
         )
+    }
+
+    private struct Identity { let email: String?; let plan: String?; let authMode: String? }
+
+    /// Pulls email + ChatGPT plan out of `~/.codex/auth.json`. The id_token
+    /// is a JWT whose payload carries both, plus an `https://api.openai.com/auth`
+    /// claim with `chatgpt_plan_type`. We tolerate any missing fields silently.
+    private static func readIdentity(configDir: String) -> Identity? {
+        let path = configDir + "/auth.json"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        let mode = root["auth_mode"] as? String
+        let tokens = root["tokens"] as? [String: Any]
+        let idToken = tokens?["id_token"] as? String
+        let claims = idToken.flatMap(decodeJWTPayload)
+        let email = claims?["email"] as? String
+        let openai = claims?["https://api.openai.com/auth"] as? [String: Any]
+        let plan = openai?["chatgpt_plan_type"] as? String
+        return Identity(email: email, plan: plan, authMode: mode)
+    }
+
+    private static func decodeJWTPayload(_ jwt: String) -> [String: Any]? {
+        let parts = jwt.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var s = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while s.count % 4 != 0 { s.append("=") }
+        guard let data = Data(base64Encoded: s),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return obj
     }
 
     private static func windowLabel(minutes: Int?, fallback: String) -> String {

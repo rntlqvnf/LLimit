@@ -63,6 +63,15 @@ struct LoginSheet: View {
                 try? await Task.sleep(nanoseconds: 2_500_000_000)
                 if await CLILoginRunner.isLoggedIn(account: account) {
                     detectedLogin = true
+                    if account.provider == .claude {
+                        do {
+                            try ClaudeAuthSource.snapshotKeychain(into: account.configDir)
+                        } catch {
+                            FileHandle.standardError.write(
+                                Data("[claude] snapshot failed: \(error)\n".utf8)
+                            )
+                        }
+                    }
                     onFinished?()
                     dismiss()
                     return

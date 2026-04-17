@@ -13,11 +13,8 @@ struct SettingsView: View {
                 .tabItem { Label("Accounts", systemImage: "person.2") }
             GeneralTab()
                 .tabItem { Label("General", systemImage: "gearshape") }
-            AboutTab()
-                .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 580, height: 520)
-        .padding()
+        .frame(width: 620, height: 520)
         .sheet(item: $loginAccount) { account in
             LoginSheet(account: account) {
                 Task { await refresher.refresh(account) }
@@ -66,8 +63,12 @@ private struct AccountsTab: View {
                 }
             }
             Divider()
-            HStack(spacing: 4) {
-                Button { startAdd() } label: { Image(systemName: "plus") }
+            HStack(spacing: 6) {
+                Button {
+                    startAdd()
+                } label: {
+                    Label("Add", systemImage: "plus")
+                }
                 Button {
                     if let id = selection,
                        let acc = store.accounts.first(where: { $0.id == id }) {
@@ -75,13 +76,15 @@ private struct AccountsTab: View {
                         selection = nil
                         draft = nil
                     }
-                } label: { Image(systemName: "minus") }
+                } label: {
+                    Label("Remove", systemImage: "minus")
+                }
                 .disabled(selection == nil)
                 Spacer()
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
             .controlSize(.small)
-            .padding(6)
+            .padding(8)
         }
     }
 
@@ -243,15 +246,15 @@ private struct GeneralTab: View {
             Section("Display") {
                 Toggle("Show reset times under each bar", isOn: $showResetTimes)
                 Toggle("Compact menu bar (icon only)", isOn: $compactMenuBar)
-                HStack {
-                    Text("Warn when usage exceeds")
-                    Slider(value: $warnAtPercent, in: 50...95, step: 5) {
-                        EmptyView()
+                LabeledContent("Warn at") {
+                    HStack {
+                        Slider(value: $warnAtPercent, in: 50...95, step: 5)
+                            .frame(maxWidth: 200)
+                        Text("\(Int(warnAtPercent))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .frame(width: 40, alignment: .trailing)
                     }
-                    Text("\(Int(warnAtPercent))%")
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .frame(width: 40, alignment: .trailing)
                 }
             }
 
@@ -275,7 +278,7 @@ private struct GeneralTab: View {
                 }
             }
         }
-        .padding()
+        .formStyle(.grouped)
     }
 
     private var configPath: String {
@@ -284,40 +287,5 @@ private struct GeneralTab: View {
                                in: .userDomainMask, appropriateFor: nil, create: false))?
             .appendingPathComponent("LLMBar/accounts.json")
         return url?.path ?? "~/Library/Application Support/LLMBar/accounts.json"
-    }
-}
-
-// MARK: - About
-
-private struct AboutTab: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "gauge.with.dots.needle.50percent")
-                .font(.system(size: 48))
-                .foregroundStyle(.tint)
-            Text("LLMBar")
-                .font(.title2.weight(.semibold))
-            Text("Menu-bar viewer for Claude Code & Codex usage windows.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Divider().padding(.vertical, 4)
-            VStack(alignment: .leading, spacing: 6) {
-                row("Claude data", "GET api.anthropic.com/api/oauth/usage")
-                row("Codex data", "~/.codex/sessions/**/*.jsonl (token_count events)")
-                row("Auth", "Reuses existing claude/codex CLI credentials")
-            }
-            .font(.caption)
-            Spacer()
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func row(_ k: String, _ v: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(k).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
-            Text(v).font(.caption.monospaced())
-        }
     }
 }

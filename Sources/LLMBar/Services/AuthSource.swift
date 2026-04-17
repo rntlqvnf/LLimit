@@ -10,11 +10,43 @@ protocol AuthSource {
     func load() throws -> AuthBundle
 }
 
+/// The Claude CLI keeps its OAuth blob in a single global keychain entry
+/// (`Claude Code-credentials`), so a fresh `claude auth login` overwrites
+/// whatever credential the previous account had. To support multiple Claude
+/// accounts we snapshot the keychain value into `<configDir>/.llmbar-credentials.json`
+/// right after each login and prefer that file at read time.
 struct ClaudeAuthSource: AuthSource {
     let configDir: String
 
-    func load() throws -> AuthBundle {
+    static let snapshotFilename = ".llmbar-credentials.json"
+
+    static func snapshotPath(for configDir: String) -> String {
+        configDir + "/" + snapshotFilename
+    }
+
+    /// Read the global Claude keychain entry and stash a copy into the
+    /// account's configDir. Called after the LoginSheet detects a fresh login.
+    static func snapshotKeychain(into configDir: String) throws {
         let raw = try Keychain.readGenericPassword(service: "Claude Code-credentials")
+        try? FileManager.default.createDirectory(
+            atPath: configDir, withIntermediateDirectories: true
+        )
+        let url = URL(fileURLWithPath: snapshotPath(for: configDir))
+        try raw.write(to: url, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600], ofItemAtPath: url.path
+        )
+    }
+
+    func load() throws -> AuthBundle {
+        let raw: String
+        let snapshot = Self.snapshotPath(for: configDir)
+        if let data = try? String(contentsOfFile: snapshot, encoding: .utf8),
+           !data.isEmpty {
+            raw = data
+        } else {
+            raw = try Keychain.readGenericPassword(service: "Claude Code-credentials")
+        }
         guard let data = raw.data(using: .utf8) else { throw KeychainError.unexpectedData }
 
         struct Outer: Decodable { let claudeAiOauth: Inner }

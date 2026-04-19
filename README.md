@@ -17,8 +17,14 @@ accounts, without leaving the keyboard.
 1. Grab the latest `LLimit-<version>.zip` from the
    [Releases page](https://github.com/rntlqvnf/LLimit/releases).
 2. Unzip and drag `LLimit.app` into `/Applications`.
-3. The first launch is ad-hoc signed; if Gatekeeper complains, right-click →
-   **Open** → **Open** to bypass once.
+3. **First launch only** — the build is ad-hoc signed (no $99 Apple Developer
+   account), so Gatekeeper will refuse the first double-click. Pick one:
+   - **Right-click → Open → Open** in the dialog. Done forever.
+   - Or, if macOS shows *"could not be opened because Apple cannot check it
+     for malicious software"*, open **System Settings → Privacy & Security**,
+     scroll to the message about LLimit, click **Open Anyway**.
+   - Or, from a terminal:
+     `xattr -dr com.apple.quarantine /Applications/LLimit.app`
 
 ### Build from source
 
@@ -56,10 +62,15 @@ Scripts/package_app.sh 0.2.0 zip        # → build/release/LLimit-0.2.0.zip
   notification per window per reset cycle.
 - **Launch at login** — toggle in General settings (uses
   `SMAppService.mainApp`).
-- **Per-account login flow** — opens a Terminal running
-  `CLAUDE_CONFIG_DIR=… claude auth login` (or the Codex equivalent), polls
-  for completion, then snapshots the credential into the account directory
-  so multiple Claude accounts coexist without overwriting each other.
+- **Per-account login flow**
+  - **Claude**: replicates the `claude login` PKCE OAuth flow ourselves —
+    opens your real browser to Anthropic's sign-in page, catches the
+    callback at `localhost:54545`, and saves each bearer to its own JSON
+    snapshot. Bypasses the Claude CLI's single-global-keychain limitation
+    so multiple accounts coexist.
+  - **Codex**: launches `codex login` in-process, captures the device-code
+    URL, and snapshots the resulting `auth.json` into the per-account
+    `CODEX_HOME` so two Codex configs don't share state.
 
 ---
 
@@ -69,7 +80,7 @@ Scripts/package_app.sh 0.2.0 zip        # → build/release/LLimit-0.2.0.zip
 | -------- | ----------------------------------------------------------------------- |
 | Claude   | `GET https://api.anthropic.com/api/oauth/usage` with the OAuth token    |
 | Codex    | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` (`token_count` events)   |
-| Auth     | `Claude Code-credentials` keychain (snapshotted) and `~/.codex/auth.json` |
+| Auth     | Per-account JSON at `~/Library/Application Support/LLimit/credentials/<uuid>.json` (Claude) and `<CODEX_HOME>/auth.json` (Codex) |
 
 LLimit never sends data anywhere except to the same Anthropic OAuth
 endpoint the Claude CLI itself uses.
@@ -90,4 +101,4 @@ create`. No notarization yet — users get a Gatekeeper warning on first launch.
 
 ## License
 
-MIT. See `LICENSE` (TBD).
+MIT — see [`LICENSE`](LICENSE).

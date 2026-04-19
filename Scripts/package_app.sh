@@ -49,6 +49,30 @@ mkdir -p "$MACOS_DIR" "$RES_DIR"
 cp "$BIN" "$MACOS_DIR/LLimit"
 chmod +x "$MACOS_DIR/LLimit"
 
+# Optional app icon: if Resources/icon.png exists (square, ideally 1024×1024),
+# build an .icns from it and reference it in Info.plist. Skipped silently
+# otherwise so the build still works without an icon.
+ICON_SRC="$ROOT/Resources/icon.png"
+ICON_REF=""
+if [ -f "$ICON_SRC" ]; then
+  echo "==> building LLimit.icns from $ICON_SRC"
+  ICONSET="$OUT_DIR/LLimit.iconset"
+  rm -rf "$ICONSET"
+  mkdir -p "$ICONSET"
+  for spec in \
+      "16 icon_16x16.png"          "32 icon_16x16@2x.png" \
+      "32 icon_32x32.png"          "64 icon_32x32@2x.png" \
+      "128 icon_128x128.png"       "256 icon_128x128@2x.png" \
+      "256 icon_256x256.png"       "512 icon_256x256@2x.png" \
+      "512 icon_512x512.png"       "1024 icon_512x512@2x.png"; do
+    set -- $spec
+    sips -z "$1" "$1" "$ICON_SRC" --out "$ICONSET/$2" >/dev/null
+  done
+  iconutil -c icns "$ICONSET" -o "$RES_DIR/LLimit.icns"
+  rm -rf "$ICONSET"
+  ICON_REF="<key>CFBundleIconFile</key><string>LLimit</string>"
+fi
+
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -56,6 +80,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleExecutable</key><string>LLimit</string>
+    ${ICON_REF}
     <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>LLimit</string>
@@ -63,6 +88,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>${VERSION}</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>

@@ -4,10 +4,6 @@ A native macOS menu-bar app that shows **how much of your Claude Code and
 Codex usage windows you've burned through** — at a glance, across multiple
 accounts, without leaving the keyboard.
 
-> Inspired by [steipete/CodexBar](https://github.com/steipete/CodexBar),
-> but reuses your existing `claude` / `codex` CLI logins instead of
-> requiring a separate sign-in flow.
-
 <p align="center">
   <img src="Resources/screenshot.png" alt="LLimit usage popover" width="480">
 </p>

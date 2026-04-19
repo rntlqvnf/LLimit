@@ -15,7 +15,7 @@ accounts, without leaving the keyboard.
 ### One-line install (recommended)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rntlqvnf/LLimit/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/githajae/LLimit/main/install.sh | bash
 ```
 
 Downloads the latest release, installs to `/Applications/LLimit.app`,
@@ -25,7 +25,7 @@ and opens the app. Apple Silicon only for now.
 ### Manual install
 
 1. Grab the latest `LLimit-<version>.zip` from the
-   [Releases page](https://github.com/rntlqvnf/LLimit/releases).
+   [Releases page](https://github.com/githajae/LLimit/releases).
 2. Unzip and drag `LLimit.app` into `/Applications`.
 3. The build is ad-hoc signed (no $99 Apple Developer account), so the first
    double-click will be blocked by Gatekeeper. Pick one:
@@ -39,7 +39,7 @@ and opens the app. Apple Silicon only for now.
 Requires macOS 14+ and Xcode 15 / Swift 5.9.
 
 ```sh
-git clone https://github.com/rntlqvnf/LLimit.git
+git clone https://github.com/githajae/LLimit.git
 cd LLimit
 Scripts/package_app.sh                  # → build/release/LLimit.app
 open build/release/LLimit.app

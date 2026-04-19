@@ -6,10 +6,10 @@
 # /Applications, and opens it.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/rntlqvnf/LLimit/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/githajae/LLimit/main/install.sh | bash
 set -euo pipefail
 
-REPO="rntlqvnf/LLimit"
+REPO="githajae/LLimit"
 APP_NAME="LLimit"
 DEST="/Applications/${APP_NAME}.app"
 

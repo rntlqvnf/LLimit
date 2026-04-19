@@ -35,25 +35,21 @@ struct AnthropicUsageAPI: UsageAPI {
             auth = nil
         }
 
-        // Fetch CLI status for email/plan metadata (best-effort).
-        struct Status: Decodable {
-            let loggedIn: Bool
-            let email: String?
-            let subscriptionType: String?
-            let orgName: String?
-            let authMethod: String?
-        }
-        let raw = await CLILoginRunner.runCapture(
-            "claude", ["auth", "status"],
-            env: [:]
-        )
-        let status = (raw.data(using: .utf8)).flatMap {
-            try? JSONDecoder().decode(Status.self, from: $0)
+        guard auth != nil else {
+            throw UsageAPIError.notLoggedIn
         }
 
-        // Require at least one auth source: LLimit snapshot OR CLI login.
-        guard auth != nil || status?.loggedIn == true else {
-            throw UsageAPIError.notLoggedIn
+        // Fetch profile (email, plan) and usage via the OAuth token directly,
+        // so the Claude CLI doesn't need to be installed or logged in.
+        var profileEmail: String? = nil
+        var profilePlan: String? = nil
+        var profileOrg: String? = nil
+        if let auth, !auth.isSessionAuth {
+            if let profile = try? await Self.fetchProfile(token: auth.accessToken) {
+                profileEmail = profile.account.email
+                profilePlan = Self.planLabel(from: profile)
+                profileOrg = profile.organization.name
+            }
         }
 
         var windows: [UsageWindow] = []
@@ -99,10 +95,10 @@ struct AnthropicUsageAPI: UsageAPI {
         return UsageSnapshot(
             fetchedAt: Date(),
             windows: windows,
-            note: status?.authMethod,
-            email: status?.email,
-            planLabel: status?.subscriptionType.map { "\($0) plan" },
-            organization: status?.orgName
+            note: nil,
+            email: profileEmail,
+            planLabel: profilePlan,
+            organization: profileOrg
         )
     }
 
@@ -214,6 +210,65 @@ struct AnthropicUsageAPI: UsageAPI {
             throw UsageAPIError.parse("HTTP \(status)")
         }
         return try JSONDecoder().decode(RateLimits.self, from: data)
+    }
+
+    // MARK: - Profile
+
+    struct ProfileResponse: Decodable {
+        let account: ProfileAccount
+        let organization: ProfileOrganization
+    }
+    struct ProfileAccount: Decodable {
+        let email: String?
+        let hasClaude_max: Bool?     // snake_case from API
+        let hasClaudePro: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case email
+            case hasClaude_max = "has_claude_max"
+            case hasClaudePro = "has_claude_pro"
+        }
+    }
+    struct ProfileOrganization: Decodable {
+        let name: String?
+        let organizationType: String?
+
+        enum CodingKeys: String, CodingKey {
+            case name
+            case organizationType = "organization_type"
+        }
+    }
+
+    static func fetchProfile(token: String) async throws -> ProfileResponse {
+        var req = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/profile")!)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.setValue("claude-code/2.1.112 (LLimit)", forHTTPHeaderField: "User-Agent")
+        req.timeoutInterval = 10
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        if status >= 400 {
+            throw UsageAPIError.parse("profile HTTP \(status)")
+        }
+        return try JSONDecoder().decode(ProfileResponse.self, from: data)
+    }
+
+    static func planLabel(from profile: ProfileResponse) -> String? {
+        if let orgType = profile.organization.organizationType {
+            switch orgType {
+            case "claude_max": return "max plan"
+            case "claude_pro": return "pro plan"
+            case "claude_team": return "team plan"
+            case "claude_enterprise": return "enterprise plan"
+            case "claude_free": return "free plan"
+            default: return "\(orgType) plan"
+            }
+        }
+        if profile.account.hasClaude_max == true { return "max plan" }
+        if profile.account.hasClaudePro == true { return "pro plan" }
+        return nil
     }
 
 }

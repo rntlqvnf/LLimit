@@ -163,7 +163,11 @@ struct AnthropicUsageAPI: UsageAPI {
 
     fileprivate static func doFetchRateLimitsViaSession(sessionKey: String,
                                                         organizationId: String) async throws -> RateLimits {
-        let url = URL(string: "https://claude.ai/api/organizations/\(organizationId)/usage")!
+        var comps = URLComponents(string: "https://claude.ai/api/organizations")!
+        comps.path += "/\(organizationId)/usage"
+        guard let url = comps.url else {
+            throw UsageAPIError.parse("Invalid organization ID")
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("sessionKey=\(sessionKey)", forHTTPHeaderField: "Cookie")
@@ -178,7 +182,7 @@ struct AnthropicUsageAPI: UsageAPI {
         let (data, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
         let body = String(data: data, encoding: .utf8) ?? "<binary>"
-        FileHandle.standardError.write(Data("[claude] claude.ai/api usage HTTP \(status) body=\(body.prefix(500))\n".utf8))
+        FileHandle.standardError.write(Data("[claude] claude.ai/api usage HTTP \(status)\n".utf8))
         if status == 401 || status == 403 {
             throw UsageAPIError.notLoggedIn
         }
@@ -204,8 +208,7 @@ struct AnthropicUsageAPI: UsageAPI {
         req.timeoutInterval = 10
         let (data, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
-        let body = String(data: data, encoding: .utf8) ?? "<binary>"
-        FileHandle.standardError.write(Data("[claude] /api/oauth/usage HTTP \(status) body=\(body.prefix(500))\n".utf8))
+        FileHandle.standardError.write(Data("[claude] /api/oauth/usage HTTP \(status)\n".utf8))
         if status >= 400 {
             throw UsageAPIError.parse("HTTP \(status)")
         }

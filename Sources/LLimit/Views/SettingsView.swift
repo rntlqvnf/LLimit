@@ -327,9 +327,17 @@ private struct EditForm: View {
                 Button(isAdding ? "Add" : "Save") { onSave(draft) }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-                    .disabled(draft.configDir.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(!isValidConfigDir(draft.configDir))
             }
         }
+    }
+
+    private func isValidConfigDir(_ path: String) -> Bool {
+        let trimmed = path.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        // Must be an absolute path under the user's home directory
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return trimmed.hasPrefix(home) || trimmed.hasPrefix("/Users/")
     }
 
     @ViewBuilder

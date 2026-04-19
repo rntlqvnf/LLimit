@@ -100,10 +100,10 @@ enum ClaudeOAuthLogin {
         }
 
         await MainActor.run { NSWorkspace.shared.open(authURL) }
-        FileHandle.standardError.write(Data("[oauth] opened \(authURL.absoluteString)\n".utf8))
+        FileHandle.standardError.write(Data("[oauth] opened browser for authorization\n".utf8))
 
         let callbackURL = try await server.waitForCallback()
-        FileHandle.standardError.write(Data("[oauth] callback \(callbackURL.absoluteString)\n".utf8))
+        FileHandle.standardError.write(Data("[oauth] received callback\n".utf8))
 
         guard let cbComps = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
               let items = cbComps.queryItems else {
@@ -149,7 +149,7 @@ enum ClaudeOAuthLogin {
         let n = exchangeCount
         exchangeCountLock.unlock()
         FileHandle.standardError.write(Data(
-            "[oauth] POST token (call #\(n)) code=\(code.prefix(8))… verifier=\(verifier.prefix(8))… state=\(state.prefix(8))…\n".utf8
+            "[oauth] POST token (call #\(n))\n".utf8
         ))
 
         var req = URLRequest(url: URL(string: tokenURL)!)
@@ -178,14 +178,13 @@ enum ClaudeOAuthLogin {
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
-        let bodyStr = String(data: data, encoding: .utf8) ?? "<binary>"
         FileHandle.standardError.write(Data(
-            "[oauth] token resp HTTP \(status) body=\(bodyStr.prefix(400))\n".utf8
+            "[oauth] token resp HTTP \(status)\n".utf8
         ))
         if status >= 400 {
             throw NSError(
                 domain: "ClaudeOAuth", code: status,
-                userInfo: [NSLocalizedDescriptionKey: "Token exchange HTTP \(status): \(bodyStr.prefix(300))"]
+                userInfo: [NSLocalizedDescriptionKey: "Token exchange failed (HTTP \(status))"]
             )
         }
         return try JSONDecoder().decode(TokenResponse.self, from: data)
@@ -358,7 +357,7 @@ final class OAuthCallbackServer {
             guard parts.count >= 2 else { return }
             let method = String(parts[0])
             let path = String(parts[1])
-            FileHandle.standardError.write(Data("[oauth] conn \(method) \(path)\n".utf8))
+            FileHandle.standardError.write(Data("[oauth] conn \(method) \(path.split(separator: "?").first ?? "/")\n".utf8))
 
             guard let url = URL(string: "http://127.0.0.1:\(self.bound)\(path)") else { return }
 

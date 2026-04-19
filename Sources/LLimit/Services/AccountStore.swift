@@ -101,6 +101,9 @@ final class AccountStore: ObservableObject {
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? enc.encode(snap) {
             try? data.write(to: storeURL, options: .atomic)
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: storeURL.path
+            )
         }
     }
 

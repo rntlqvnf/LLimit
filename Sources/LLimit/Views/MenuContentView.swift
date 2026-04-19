@@ -12,14 +12,12 @@ struct MenuContentView: View {
         case summary
         case detailed
         var id: String { rawValue }
-        var label: String { self == .summary ? "Summary" : "Detailed" }
         var systemImage: String {
             self == .summary ? "rectangle.compress.vertical" : "rectangle.expand.vertical"
         }
     }
 
     private var width: CGFloat { popoverMode == .summary ? 460 : 540 }
-    private var maxScrollHeight: CGFloat { popoverMode == .summary ? 560 : 640 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

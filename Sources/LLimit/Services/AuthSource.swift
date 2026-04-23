@@ -81,6 +81,16 @@ struct ClaudeAuthSource: AuthSource {
         let data = try JSONSerialization.data(withJSONObject: blob, options: [])
         let url = snapshotURL(for: accountId)
         try data.write(to: url, options: .atomic)
+        // Paranoia: atomic write doesn't guarantee the file is readable
+        // afterwards (read-only parent dir, disk full, etc.). Surface a
+        // clear error instead of silently returning success and having
+        // load() throw later.
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw NSError(
+                domain: "ClaudeAuth", code: -20,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to persist credential snapshot."]
+            )
+        }
         try? FileManager.default.setAttributes(
             [.posixPermissions: 0o600], ofItemAtPath: url.path
         )
@@ -90,16 +100,24 @@ struct ClaudeAuthSource: AuthSource {
         try? FileManager.default.removeItem(at: snapshotURL(for: accountId))
     }
 
+    /// Loads the per-account credential snapshot. Throws `notLoggedIn` if
+    /// no snapshot exists.
+    ///
+    /// We intentionally do NOT fall back to the Claude CLI's global
+    /// `"Claude Code-credentials"` keychain entry anymore. That fallback
+    /// looked helpful when only one account existed, but with N accounts
+    /// every account without its own snapshot saw the same CLI token —
+    /// which meant "Account B" would silently report "Account A"'s usage,
+    /// or falsely appear signed-in. Existing single-account users are
+    /// carried forward by `AccountStore.migrateKeychainIfNeeded()` which
+    /// snapshots the keychain into the first Claude account on upgrade.
     func load() throws -> AuthBundle {
-        let raw: String
         let snapshot = Self.snapshotURL(for: accountId)
-        if let data = try? String(contentsOf: snapshot, encoding: .utf8),
-           !data.isEmpty {
-            raw = data
-        } else {
-            raw = try Keychain.readGenericPassword(service: "Claude Code-credentials")
+        guard let rawData = try? String(contentsOf: snapshot, encoding: .utf8),
+              !rawData.isEmpty,
+              let data = rawData.data(using: .utf8) else {
+            throw UsageAPIError.notLoggedIn
         }
-        guard let data = raw.data(using: .utf8) else { throw KeychainError.unexpectedData }
 
         // Prefer the new session-cookie shape if present.
         struct SessionOuter: Decodable { let claudeAiSession: SessionInner }
@@ -116,7 +134,7 @@ struct ClaudeAuthSource: AuthSource {
             )
         }
 
-        // Fall back to legacy OAuth shape.
+        // Legacy OAuth shape — still the default for LLimit's PKCE flow.
         struct OAuthOuter: Decodable { let claudeAiOauth: OAuthInner }
         struct OAuthInner: Decodable {
             let accessToken: String

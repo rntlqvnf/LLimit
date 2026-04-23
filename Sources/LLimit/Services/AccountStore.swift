@@ -40,6 +40,38 @@ final class AccountStore: ObservableObject {
         load()
         if accounts.isEmpty { seedDefaults() }
         autoAddMissingDefaults()
+        migrateKeychainIfNeeded()
+    }
+
+    /// Snapshot the Claude CLI keychain token into the first Claude account
+    /// that lacks a snapshot, so users upgrading from 0.1.x (where the
+    /// keychain fallback in `ClaudeAuthSource.load()` made the single-
+    /// account case Just Work) don't see their Claude data vanish on
+    /// upgrade. Runs once per user, gated on UserDefaults.
+    ///
+    /// Users with multiple Claude accounts still need to sign in to each
+    /// additional account via LLimit — the keychain only holds one entry,
+    /// and applying it to more than one account is what broke multi-
+    /// account correctness in the first place.
+    private func migrateKeychainIfNeeded() {
+        let defaults = UserDefaults.standard
+        let key = "llimit.didKeychainMigration.v1"
+        if defaults.bool(forKey: key) { return }
+        defaults.set(true, forKey: key)
+
+        guard let first = accounts.first(where: {
+            $0.provider == .claude && !ClaudeAuthSource.hasSnapshot(for: $0.id)
+        }) else { return }
+        do {
+            try ClaudeAuthSource.snapshotKeychain(for: first.id)
+            FileHandle.standardError.write(Data(
+                "[migrate] snapshotted CLI keychain into first Claude account\n".utf8
+            ))
+        } catch {
+            FileHandle.standardError.write(Data(
+                "[migrate] keychain snapshot skipped: \(error)\n".utf8
+            ))
+        }
     }
 
     func add(_ account: Account) {

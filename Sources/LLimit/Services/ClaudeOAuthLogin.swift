@@ -202,6 +202,43 @@ enum ClaudeOAuthLogin {
         return try JSONDecoder().decode(TokenResponse.self, from: data)
     }
 
+    /// Exchange a refresh token for a new access/refresh token pair.
+    ///
+    /// Anthropic's OAuth access tokens live ~8 hours. Without this, users
+    /// would need to re-OAuth every 8 hours and see "stuck on old data"
+    /// when the token silently expired. Called by `UsageAPI.fetch()` when
+    /// the stored token is near expiry.
+    ///
+    /// Anthropic may rotate the refresh_token itself on each use — the
+    /// caller must persist whatever new refresh_token the response carries.
+    static func refresh(refreshToken: String) async throws -> TokenResponse {
+        var req = URLRequest(url: URL(string: tokenURL)!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let payload: [String: String] = [
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "client_id": clientID,
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload, options: [])
+        req.timeoutInterval = 15
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? -1
+        FileHandle.standardError.write(Data(
+            "[oauth] refresh HTTP \(status)\n".utf8
+        ))
+        if status >= 400 {
+            throw NSError(
+                domain: "ClaudeOAuth", code: status,
+                userInfo: [NSLocalizedDescriptionKey: "Token refresh failed (HTTP \(status))"]
+            )
+        }
+        return try JSONDecoder().decode(TokenResponse.self, from: data)
+    }
+
     // MARK: - PKCE
 
     private static func makeCodeVerifier() -> String {

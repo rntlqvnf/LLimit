@@ -27,7 +27,7 @@ enum UsageAPIError: LocalizedError {
 struct AnthropicUsageAPI: UsageAPI {
     func fetch(account: Account) async throws -> UsageSnapshot {
         // Try to load LLimit's own per-account credential first.
-        let auth: AuthBundle?
+        var auth: AuthBundle?
         do {
             auth = try ClaudeAuthSource(accountId: account.id).load()
         } catch {
@@ -37,6 +37,35 @@ struct AnthropicUsageAPI: UsageAPI {
 
         guard auth != nil else {
             throw UsageAPIError.notLoggedIn
+        }
+
+        // Anthropic OAuth access tokens expire in ~8 hours. If ours is
+        // near the cliff, use the refresh_token to mint a new pair before
+        // making any API calls — otherwise the user silently freezes on
+        // stale data for 8 hours until they re-sign-in. Skip for session
+        // auth (cookie-based, no refresh token).
+        if let current = auth,
+           !current.isSessionAuth,
+           let refreshToken = current.refreshToken,
+           let expiresAt = current.expiresAt,
+           expiresAt.timeIntervalSinceNow < 120 {
+            do {
+                let newToken = try await ClaudeOAuthLogin.refresh(refreshToken: refreshToken)
+                try ClaudeAuthSource.saveOAuth(
+                    accessToken: newToken.accessToken,
+                    // Anthropic may rotate the refresh_token; keep the old
+                    // one if they don't return a new one.
+                    refreshToken: newToken.refreshToken ?? refreshToken,
+                    expiresIn: newToken.expiresIn,
+                    for: account.id
+                )
+                auth = try? ClaudeAuthSource(accountId: account.id).load()
+            } catch {
+                // Refresh failed — token is dead. Surface as notLoggedIn
+                // so the UI prompts the user to re-sign-in.
+                FileHandle.standardError.write(Data("[claude] refresh failed: \(error)\n".utf8))
+                throw UsageAPIError.notLoggedIn
+            }
         }
 
         // Fetch profile (email, plan) and usage via the OAuth token directly,
